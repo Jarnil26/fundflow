@@ -3,7 +3,6 @@ import { ObjectId } from 'mongodb';
 import {
   Task,
   EmployeeWallet,
-  ProjectExpense,
   CompanyExpense,
   DigitalClient,
 } from './models';
@@ -21,7 +20,33 @@ export async function getDatabase() {
 }
 
 /* ============================
-   DATE HELPERS (CURRENT MONTH)
+   INITIALIZE COLLECTIONS
+============================ */
+export async function initializeCollections() {
+  const db = await getDatabase();
+
+  const collections = await db.listCollections().toArray();
+  const names = collections.map(c => c.name);
+
+  const requiredCollections = [
+    'tasks',
+    'employee_wallets',
+    'project_expenses',
+    'company_expenses',
+    'digital_clients',
+    'users',
+  ];
+
+  for (const name of requiredCollections) {
+    if (!names.includes(name)) {
+      await db.createCollection(name);
+      console.log('[v0] DB: Created collection', name);
+    }
+  }
+}
+
+/* ============================
+   DATE HELPERS
 ============================ */
 function getCurrentMonthRange() {
   const now = new Date();
@@ -46,95 +71,65 @@ function getCurrentMonthRange() {
 /* ============================
    TASK OPERATIONS
 ============================ */
-
-// ✅ ONLY CURRENT MONTH COMPLETED TASKS
 export async function getCompletedPaidTasks(): Promise<Task[]> {
   try {
     const db = await getDatabase();
     const { startOfMonth, startOfNextMonth } = getCurrentMonthRange();
 
-    const tasks = await db.collection('tasks').find({
+    return await db.collection('tasks').find({
       taskStatus: 'Completed',
       $expr: {
         $and: [
-          {
-            $gte: [
-              { $toDate: '$workDoneDate' },
-              startOfMonth,
-            ],
-          },
-          {
-            $lt: [
-              { $toDate: '$workDoneDate' },
-              startOfNextMonth,
-            ],
-          },
+          { $gte: [{ $toDate: '$workDoneDate' }, startOfMonth] },
+          { $lt: [{ $toDate: '$workDoneDate' }, startOfNextMonth] },
         ],
       },
-    }).toArray();
-
-    console.log(
-      '[v0] DB: Found',
-      tasks.length,
-      'completed tasks for current month'
-    );
-
-    return tasks as Task[];
+    }).toArray() as Task[];
   } catch (error) {
     console.error('[v0] DB: Error fetching completed tasks:', error);
     return [];
   }
 }
 
-
 export async function getAllTasks(): Promise<Task[]> {
   try {
     const db = await getDatabase();
-    return (await db.collection('tasks').find({}).toArray()) as Task[];
-  } catch (error) {
-    console.error('[v0] DB: Error fetching all tasks:', error);
+    return await db.collection('tasks').find({}).toArray() as Task[];
+  } catch {
     return [];
   }
 }
 
-// ✅ CURRENT MONTH PER EMPLOYEE
 export async function getTasksByEmployee(employeeId: string): Promise<Task[]> {
   try {
     const db = await getDatabase();
     const { startOfMonth, startOfNextMonth } = getCurrentMonthRange();
 
-    const tasks = await db.collection('tasks').find({
+    return await db.collection('tasks').find({
       employeeId,
       taskStatus: 'Completed',
       $expr: {
         $and: [
-          {
-            $gte: [
-              { $toDate: '$workDoneDate' },
-              startOfMonth,
-            ],
-          },
-          {
-            $lt: [
-              { $toDate: '$workDoneDate' },
-              startOfNextMonth,
-            ],
-          },
+          { $gte: [{ $toDate: '$workDoneDate' }, startOfMonth] },
+          { $lt: [{ $toDate: '$workDoneDate' }, startOfNextMonth] },
         ],
       },
-    }).toArray();
-
-    console.log(
-      `[v0] DB: ${employeeId} completed ${tasks.length} tasks this month`
-    );
-
-    return tasks as Task[];
-  } catch (error) {
-    console.error('[v0] DB: Error fetching tasks for employee:', error);
+    }).toArray() as Task[];
+  } catch {
     return [];
   }
 }
 
+export async function updateTask(
+  taskId: string,
+  updates: Partial<Task>
+) {
+  const db = await getDatabase();
+  await db.collection('tasks').updateOne(
+    { _id: new ObjectId(taskId) },
+    { $set: { ...updates, updatedAt: new Date() } }
+  );
+}
 
 /* ============================
    FINANCIAL CALCULATIONS
@@ -177,102 +172,70 @@ export function calculateTaskFinancials(
    EMPLOYEE WALLET
 ============================ */
 export async function getEmployeeWallet(employeeId: string) {
-  try {
-    const db = await getDatabase();
-    return await db.collection('employee_wallets').findOne({ employeeId });
-  } catch (error) {
-    console.error('[v0] DB: Error fetching wallet:', error);
-    return null;
-  }
+  const db = await getDatabase();
+  return db.collection('employee_wallets').findOne({ employeeId });
 }
 
 export async function updateEmployeeWallet(
   employeeId: string,
   updates: Partial<EmployeeWallet>
 ) {
-  try {
-    const db = await getDatabase();
-    await db.collection('employee_wallets').updateOne(
-      { employeeId },
-      { $set: { ...updates, updatedAt: new Date() } },
-      { upsert: true }
-    );
-  } catch (error) {
-    console.error('[v0] DB: Error updating wallet:', error);
-  }
+  const db = await getDatabase();
+  await db.collection('employee_wallets').updateOne(
+    { employeeId },
+    { $set: { ...updates, updatedAt: new Date() } },
+    { upsert: true }
+  );
 }
 
 export async function getAllEmployeeWallets(): Promise<EmployeeWallet[]> {
-  try {
-    const db = await getDatabase();
-    return (await db.collection('employee_wallets').find({}).toArray()) as EmployeeWallet[];
-  } catch (error) {
-    console.error('[v0] DB: Error fetching wallets:', error);
-    return [];
-  }
+  const db = await getDatabase();
+  return await db.collection('employee_wallets').find({}).toArray() as EmployeeWallet[];
 }
 
 /* ============================
    PROJECT EXPENSES
 ============================ */
 export async function getProjectExpensesByTask(taskId: ObjectId) {
-  try {
-    const db = await getDatabase();
-    return await db.collection('project_expenses').find({ taskId }).toArray();
-  } catch (error) {
-    console.error('[v0] DB: Error fetching project expenses:', error);
-    return [];
-  }
+  const db = await getDatabase();
+  return db.collection('project_expenses').find({ taskId }).toArray();
 }
 
-/* ============================
-   COMPANY EXPENSES
-============================ */
-export async function getAllCompanyExpenses(): Promise<CompanyExpense[]> {
-  try {
-    const db = await getDatabase();
-    return (await db.collection('company_expenses').find({}).toArray()) as CompanyExpense[];
-  } catch (error) {
-    console.error('[v0] DB: Error fetching company expenses:', error);
-    return [];
-  }
-}
-
-/* ============================
-   DIGITAL CLIENTS
-============================ */
-export async function getAllDigitalClients(): Promise<DigitalClient[]> {
-  try {
-    const db = await getDatabase();
-    return (await db.collection('digital_clients').find({}).toArray()) as DigitalClient[];
-  } catch (error) {
-    console.error('[v0] DB: Error fetching digital clients:', error);
-    return [];
-  }
-}
-
-
-// ==============================
-// CREATE PROJECT EXPENSE
-// ==============================
 export async function createProjectExpense(expense: {
-  taskId: any;
+  taskId: ObjectId;
   projectName?: string;
   amount: number;
   description: string;
   category: string;
 }) {
   const db = await getDatabase();
-  const result = await db.collection('project_expenses').insertOne({
+  const res = await db.collection('project_expenses').insertOne({
     ...expense,
+    status: 'Pending',
     createdAt: new Date(),
   });
-  return result.insertedId;
+  return res.insertedId;
 }
 
-// ==============================
-// CREATE COMPANY EXPENSE
-// Company expense operations
+export async function updateExpenseStatus(
+  expenseId: string,
+  status: 'Pending' | 'Approved' | 'Rejected'
+) {
+  const db = await getDatabase();
+  await db.collection('project_expenses').updateOne(
+    { _id: new ObjectId(expenseId) },
+    { $set: { status, updatedAt: new Date() } }
+  );
+}
+
+/* ============================
+   COMPANY EXPENSES
+============================ */
+export async function getAllCompanyExpenses(): Promise<CompanyExpense[]> {
+  const db = await getDatabase();
+  return await db.collection('company_expenses').find({}).toArray() as CompanyExpense[];
+}
+
 export async function createCompanyExpense(expense: {
   month: string;
   amount: number;
@@ -280,12 +243,52 @@ export async function createCompanyExpense(expense: {
   category: string;
 }) {
   const db = await getDatabase();
-
-  const result = await db.collection('company_expenses').insertOne({
+  const res = await db.collection('company_expenses').insertOne({
     ...expense,
     createdAt: new Date(),
   });
+  return res.insertedId;
+}
 
-  console.log('[v0] DB: Created company expense:', result.insertedId);
-  return result.insertedId;
+/* ============================
+   DIGITAL CLIENTS
+============================ */
+export async function getAllDigitalClients(): Promise<DigitalClient[]> {
+  const db = await getDatabase();
+  return await db.collection('digital_clients').find({}).toArray() as DigitalClient[];
+}
+
+export async function createDigitalClient(client: DigitalClient) {
+  const db = await getDatabase();
+  const res = await db.collection('digital_clients').insertOne({
+    ...client,
+    createdAt: new Date(),
+  });
+  return res.insertedId;
+}
+
+export async function getDigitalClientsByMonth(month: string) {
+  const db = await getDatabase();
+  return db.collection('digital_clients').find({ month }).toArray();
+}
+
+/* ============================
+   USERS
+============================ */
+export async function getUsers() {
+  const db = await getDatabase();
+  return db.collection('users').find({}).toArray();
+}
+
+export async function createUser(user: {
+  name: string;
+  email: string;
+  role: string;
+}) {
+  const db = await getDatabase();
+  const res = await db.collection('users').insertOne({
+    ...user,
+    createdAt: new Date(),
+  });
+  return res.insertedId;
 }
