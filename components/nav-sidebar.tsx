@@ -93,42 +93,7 @@ export function NavSidebar() {
             })}
           </div>
 
-          {/* BOTTOM ACTIONS */}
-          <div className="space-y-3 border-t border-sidebar-border pt-4">
-            {/* Notifications (UI Ready) */}
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent"
-              onClick={() => {
-                // Future notification panel
-                alert('Notifications coming soon 🚀');
-              }}
-            >
-              <Bell className="w-4 h-4" />
-              Notifications
-            </Button>
-
-            {/* Logout */}
-            <Button
-              variant="outline"
-              className="w-full justify-start gap-3"
-              onClick={async () => {
-                try {
-                  await fetch('/api/auth/logout', {
-                    method: 'POST',
-                    credentials: 'include',
-                  });
-
-                  router.replace('/login');
-                } catch (err) {
-                  console.error('Logout failed', err);
-                }
-              }}
-            >
-              <LogOut className="w-4 h-4" />
-              Logout
-            </Button>
-          </div>
+          
         </nav>
       </aside>
 
