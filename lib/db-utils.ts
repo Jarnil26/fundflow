@@ -292,3 +292,48 @@ export async function createUser(user: {
   });
   return res.insertedId;
 }
+
+/* ============================
+   COMPLETED BUT UNPAID TASKS
+============================ */
+export async function getCompletedUnpaidTasks() {
+  try {
+    const db = await getDatabase();
+    const { startOfMonth, startOfNextMonth } = getCurrentMonthRange();
+
+    return await db.collection('tasks').find({
+      taskStatus: 'Completed',
+      paymentStatus: { $ne: 'PAID' }, // PENDING or missing
+      $expr: {
+        $and: [
+          { $gte: [{ $toDate: '$workDoneDate' }, startOfMonth] },
+          { $lt: [{ $toDate: '$workDoneDate' }, startOfNextMonth] },
+        ],
+      },
+    }).toArray();
+  } catch (error) {
+    console.error('[DB] Error fetching unpaid completed tasks:', error);
+    return [];
+  }
+}
+
+export async function creditEmployeeWallet(
+  employeeId: string,
+  amount: number
+) {
+  const db = await getDatabase();
+
+  await db.collection('employee_wallets').updateOne(
+    { employeeId },
+    {
+      $inc: {
+        walletBalance: amount,
+        accumulatedEarnings: amount,
+      },
+      $set: {
+        updatedAt: new Date(),
+      },
+    },
+    { upsert: true }
+  );
+}

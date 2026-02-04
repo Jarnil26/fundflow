@@ -1,16 +1,14 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard,
-  CheckSquare,
   DollarSign,
-  Users,
   Receipt,
   UserCheck,
   LogOut,
-  Settings,
+  Bell,
   Menu,
   X,
 } from 'lucide-react';
@@ -42,6 +40,7 @@ const navItems = [
 
 export function NavSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
 
   const isActive = (href: string) => {
@@ -65,12 +64,11 @@ export function NavSidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-0 z-40 h-screen w-64 bg-sidebar border-r border-border pt-20 transition-transform duration-300 lg:translate-x-0 ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className={`fixed left-0 top-0 z-40 h-screen w-64 bg-sidebar border-r border-border pt-20 transition-transform duration-300
+        ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}
       >
-        <nav className="flex flex-col h-full px-4 py-6 space-y-2">
-          {/* Navigation Items */}
+        <nav className="flex flex-col h-full px-4 py-6">
+          {/* NAV LINKS */}
           <div className="flex-1 space-y-2">
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -81,11 +79,12 @@ export function NavSidebar() {
                   key={item.href}
                   href={item.href}
                   onClick={() => setIsOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-colors ${
-                    active
-                      ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                      : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                  }`}
+                  className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-all
+                    ${
+                      active
+                        ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                    }`}
                 >
                   <Icon className="w-5 h-5" />
                   <span className="font-medium">{item.label}</span>
@@ -94,20 +93,37 @@ export function NavSidebar() {
             })}
           </div>
 
-          {/* Bottom Actions */}
-          <div className="space-y-2 border-t border-sidebar-border pt-4">
+          {/* BOTTOM ACTIONS */}
+          <div className="space-y-3 border-t border-sidebar-border pt-4">
+            {/* Notifications (UI Ready) */}
             <Button
-              variant="outline"
-              className="w-full justify-start gap-2 text-sidebar-foreground hover:text-sidebar-foreground bg-transparent"
-              onClick={() => setIsOpen(false)}
+              variant="ghost"
+              className="w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent"
+              onClick={() => {
+                // Future notification panel
+                alert('Notifications coming soon 🚀');
+              }}
             >
-              <Settings className="w-4 h-4" />
-              Settings
+              <Bell className="w-4 h-4" />
+              Notifications
             </Button>
+
+            {/* Logout */}
             <Button
               variant="outline"
-              className="w-full justify-start gap-2 text-sidebar-foreground hover:text-sidebar-foreground bg-transparent"
-              onClick={() => setIsOpen(false)}
+              className="w-full justify-start gap-3"
+              onClick={async () => {
+                try {
+                  await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    credentials: 'include',
+                  });
+
+                  router.replace('/login');
+                } catch (err) {
+                  console.error('Logout failed', err);
+                }
+              }}
             >
               <LogOut className="w-4 h-4" />
               Logout
@@ -124,7 +140,7 @@ export function NavSidebar() {
         />
       )}
 
-      {/* Main Content Offset */}
+      {/* Desktop Spacer */}
       <div className="hidden lg:block lg:w-64" />
     </>
   );

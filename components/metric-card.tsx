@@ -1,31 +1,38 @@
 'use client';
 
-import { Card } from '@/components/ui/card';
-import { type LucideIcon } from 'lucide-react';
+import { LucideIcon } from 'lucide-react';
 
-interface MetricCardProps {
+export interface MetricCardProps {
   title: string;
-  value: string | number;
+  value: string;
   icon: LucideIcon;
+  color?: string;
   trend?: string;
-  trendPositive?: boolean;
 }
 
-export function MetricCard({ title, value, icon: Icon, trend, trendPositive }: MetricCardProps) {
+export function MetricCard({
+  title,
+  value,
+  icon: Icon,
+  color = 'from-slate-500 to-slate-600',
+  trend,
+}: MetricCardProps) {
   return (
-    <Card className="bg-card border-border p-6 flex flex-col gap-4">
+    <div
+      className={`rounded-xl p-6 text-white bg-gradient-to-r ${color}`}
+    >
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
-        <Icon className="w-5 h-5 text-accent" />
+        <p className="text-sm opacity-90">{title}</p>
+        <Icon className="h-5 w-5 opacity-90" />
       </div>
-      <div className="flex flex-col gap-1">
-        <div className="text-2xl font-bold text-foreground">{value}</div>
-        {trend && (
-          <p className={`text-xs font-medium ${trendPositive ? 'text-green-500' : 'text-red-500'}`}>
-            {trend}
-          </p>
-        )}
-      </div>
-    </Card>
+
+      <p className="text-2xl font-bold mt-2">{value}</p>
+
+      {trend && (
+        <p className="text-xs opacity-80 mt-1">
+          {trend}
+        </p>
+      )}
+    </div>
   );
 }
