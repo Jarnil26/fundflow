@@ -1,300 +1,296 @@
 'use client';
 
 import { useState } from 'react';
-import { UserCheck, Plus } from 'lucide-react';
+import { UserCheck, Pencil } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard-layout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import useSWR from 'swr';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
+const money = (v: number) => (Number(v) || 0).toLocaleString('en-IN');
 
 export default function DigitalServicesPage() {
   const currentMonth = new Date().toISOString().slice(0, 7);
 
-  const { data: clientData, mutate } = useSWR(
+  const { data: clientRes, mutate } = useSWR(
     `/api/digital-clients?month=${currentMonth}`,
-    fetcher,
-    { revalidateOnFocus: false }
+    fetcher
   );
 
-  const clients = clientData?.data || [];
+  const { data: settingsRes, mutate: mutateSettings } = useSWR(
+    `/api/digital-settings?month=${currentMonth}`,
+    fetcher
+  );
 
-  const [showDialog, setShowDialog] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const [formData, setFormData] = useState({
-    clientName: '',
-    monthlyPlan: '15000' as '15000' | '25000',
-    month: currentMonth,
-    metaAdSpend: '',
-    outsourcedVideoCost: '',
-  });
+  const clients = clientRes?.data || [];
+  const globalSalary = Number(settingsRes?.data?.globalSalary || 0);
 
   /* =========================
-     MONTHLY TOTALS
+     GLOBAL CALCULATIONS
   ========================= */
-  const totalRevenue = clients.reduce(
-    (sum: number, c: any) => sum + Number(c.monthlyPlan || 0),
+  const totalBase = clients.reduce(
+    (s: number, c: any) => s + Number(c.monthlyPlan || 0),
     0
   );
+
   const totalGST = clients.reduce(
-    (sum: number, c: any) => sum + Number(c.gst || 0),
+    (s: number, c: any) => s + Number(c.gst || 0),
     0
   );
-  const totalSavings = clients.reduce(
-    (sum: number, c: any) => sum + Number(c.savings || 0),
+
+  const totalAds = clients.reduce(
+    (s: number, c: any) => s + Number(c.metaAdSpend || 0),
     0
   );
-  const totalNetProfit = clients.reduce(
-    (sum: number, c: any) => sum + Number(c.netProfit || 0),
+
+  const totalVideo = clients.reduce(
+    (s: number, c: any) => s + Number(c.outsourcedVideoCost || 0),
+    0
+  );
+
+  const remaining =
+    totalBase - totalAds - totalVideo - globalSalary;
+
+  const savings = remaining > 0 ? remaining * 0.1 : 0;
+  const netProfit = remaining - savings;
+
+  /* =========================
+     STATE
+  ========================= */
+  const [showSalaryDialog, setShowSalaryDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingClient, setEditingClient] = useState<any>(null);
+
+  const [salaryRows, setSalaryRows] = useState([
+    { name: '', salary: '' },
+    { name: '', salary: '' },
+    { name: '', salary: '' },
+  ]);
+
+  const totalSalaryInput = salaryRows.reduce(
+    (sum, r) => sum + Number(r.salary || 0),
     0
   );
 
   /* =========================
-     ADD CLIENT
+     SAVE GLOBAL SALARY
   ========================= */
-  const handleAddClient = async () => {
-    if (!formData.clientName) return;
+  const saveGlobalSalary = async () => {
+    await fetch('/api/digital-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        month: currentMonth,
+        globalSalary: totalSalaryInput,
+      }),
+    });
 
-    setLoading(true);
-    try {
-      const res = await fetch('/api/digital-clients', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientName: formData.clientName,
-          monthlyPlan: Number(formData.monthlyPlan),
-          month: formData.month,
-          metaAdSpend: Number(formData.metaAdSpend || 0),
-          outsourcedVideoCost: Number(formData.outsourcedVideoCost || 0),
-        }),
-      });
+    mutateSettings();
+    setShowSalaryDialog(false);
+  };
 
-      if (res.ok) {
-        mutate();
-        setShowDialog(false);
-        setFormData({
-          clientName: '',
-          monthlyPlan: '15000',
-          month: currentMonth,
-          metaAdSpend: '',
-          outsourcedVideoCost: '',
-        });
-      }
-    } finally {
-      setLoading(false);
-    }
+  /* =========================
+     SAVE CLIENT EXPENSES
+  ========================= */
+  const saveClientExpenses = async () => {
+    if (!editingClient) return;
+
+    await fetch(`/api/digital-clients/${editingClient._id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        metaAdSpend: Number(editingClient.metaAdSpend || 0),
+        outsourcedVideoCost: Number(editingClient.outsourcedVideoCost || 0),
+      }),
+    });
+
+    mutate();
+    setShowEditDialog(false);
+    setEditingClient(null);
   };
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
+
         {/* HEADER */}
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Digital Services</h1>
-            <p className="text-muted-foreground">
-              Monthly client accounts & profitability
-            </p>
-          </div>
-          <Button onClick={() => setShowDialog(true)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Add Client Account
-          </Button>
+        <div>
+          <h1 className="text-3xl font-bold">Digital Services</h1>
+          <p className="text-muted-foreground">
+            Monthly digital profitability (global accounting)
+          </p>
         </div>
 
         {/* SUMMARY */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="p-6">
-            <p className="text-sm text-muted-foreground">Total Revenue</p>
-            <p className="text-3xl font-bold text-blue-500">
-              ₹{totalRevenue.toLocaleString('en-IN')}
-            </p>
-            <p className="text-xs text-muted-foreground mt-2">
-              {clients.length} active accounts
-            </p>
-          </Card>
+        <Card className="p-6 space-y-3">
+          <div className="flex justify-between">
+            <span>Total Base Revenue</span>
+            <span className="font-semibold">₹{money(totalBase)}</span>
+          </div>
 
-          <Card className="p-6">
-            <p className="text-sm text-muted-foreground">GST (18%)</p>
-            <p className="text-3xl font-bold text-amber-500">
-              ₹{totalGST.toLocaleString('en-IN')}
-            </p>
-          </Card>
+          <div className="flex justify-between text-muted-foreground">
+            <span>GST (18%)</span>
+            <span>₹{money(totalGST)}</span>
+          </div>
 
-          <Card className="p-6">
-            <p className="text-sm text-muted-foreground">Savings (10%)</p>
-            <p className="text-3xl font-bold text-green-500">
-              ₹{totalSavings.toLocaleString('en-IN')}
-            </p>
-          </Card>
+          <div className="flex justify-between">
+            <span>Ads + Video Expenses</span>
+            <span>₹{money(totalAds + totalVideo)}</span>
+          </div>
 
-          <Card className="p-6">
-            <p className="text-sm text-muted-foreground">Net Profit</p>
-            <p className="text-3xl font-bold text-purple-500">
-              ₹{totalNetProfit.toLocaleString('en-IN')}
-            </p>
-          </Card>
-        </div>
+          <div className="flex justify-between text-red-500">
+            <span className="flex items-center gap-1">
+              Digital Team Salary
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setShowSalaryDialog(true)}
+              >
+                <Pencil className="w-4 h-4" />
+              </Button>
+            </span>
+            <span>₹{money(globalSalary)}</span>
+          </div>
+
+          <div className="flex justify-between text-amber-500">
+            <span>10% Savings</span>
+            <span>₹{money(savings)}</span>
+          </div>
+
+          <div className="flex justify-between text-green-600 font-bold text-lg pt-2 border-t">
+            <span>Net Profit</span>
+            <span>₹{money(netProfit)}</span>
+          </div>
+        </Card>
 
         {/* CLIENT LIST */}
         <Card className="p-6">
-          <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+          <h2 className="font-bold mb-4 flex items-center gap-2">
             <UserCheck className="w-5 h-5" />
-            Client Accounts for {currentMonth}
+            Clients – {currentMonth}
           </h2>
 
-          {clients.length === 0 ? (
-            <p className="text-muted-foreground text-center py-12">
-              No digital client accounts this month
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {clients.map((client: any) => (
-                <div
-                  key={client._id}
-                  className="border rounded-lg p-6"
+          <div className="space-y-4">
+            {clients.map((c: any) => (
+              <div key={c._id} className="border p-4 rounded space-y-1">
+                <p className="font-bold">{c.clientName}</p>
+
+                <p className="text-sm">
+                  Base ₹{money(c.monthlyPlan)} | GST ₹{money(c.gst)} | Invoice ₹
+                  {money(c.invoiceTotal)}
+                </p>
+
+                <p className="text-sm text-muted-foreground">
+                  Ads ₹{money(c.metaAdSpend)} | Video ₹
+                  {money(c.outsourcedVideoCost)}
+                </p>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingClient({ ...c });
+                    setShowEditDialog(true);
+                  }}
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Client</p>
-                      <p className="text-xl font-bold">{client.clientName}</p>
-                      <p className="text-sm text-primary">
-                        ₹{client.monthlyPlan.toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Month</p>
-                      <p className="font-bold">{client.month}</p>
-                    </div>
-                  </div>
-
-                  {/* EXPENSES */}
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground">
-                        Meta Ads Spend
-                      </p>
-                      <p className="font-bold">
-                        ₹{client.metaAdSpend.toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">
-                        Video Cost
-                      </p>
-                      <p className="font-bold">
-                        ₹{client.outsourcedVideoCost.toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* PROFIT */}
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground">GST</p>
-                      <p className="font-bold">
-                        ₹{client.gst.toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Savings</p>
-                      <p className="font-bold">
-                        ₹{client.savings.toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Net</p>
-                      <p className="font-bold text-green-500">
-                        ₹{client.netProfit.toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                  Edit Expenses
+                </Button>
+              </div>
+            ))}
+          </div>
         </Card>
       </div>
 
-      {/* ADD CLIENT DIALOG */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      {/* GLOBAL SALARY DIALOG */}
+      <Dialog open={showSalaryDialog} onOpenChange={setShowSalaryDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Digital Client</DialogTitle>
+            <DialogTitle>Digital Team Salary (Monthly)</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div>
-              <Label>Client Name</Label>
-              <Input
-                value={formData.clientName}
-                onChange={(e) =>
-                  setFormData({ ...formData, clientName: e.target.value })
-                }
-              />
+          <div className="space-y-3">
+            {salaryRows.map((row, i) => (
+              <div key={i} className="grid grid-cols-2 gap-2">
+                <Input
+                  placeholder={`Employee ${i + 1} Name`}
+                  value={row.name}
+                  onChange={(e) => {
+                    const updated = [...salaryRows];
+                    updated[i].name = e.target.value;
+                    setSalaryRows(updated);
+                  }}
+                />
+                <Input
+                  type="number"
+                  placeholder="Salary"
+                  value={row.salary}
+                  onChange={(e) => {
+                    const updated = [...salaryRows];
+                    updated[i].salary = e.target.value;
+                    setSalaryRows(updated);
+                  }}
+                />
+              </div>
+            ))}
+
+            <div className="flex justify-between font-semibold pt-2 border-t">
+              <span>Total Salary</span>
+              <span>₹{money(totalSalaryInput)}</span>
             </div>
 
-            <div>
-              <Label>Monthly Plan</Label>
-              <Select
-                value={formData.monthlyPlan}
-                onValueChange={(v: any) =>
-                  setFormData({ ...formData, monthlyPlan: v })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15000">₹15,000</SelectItem>
-                  <SelectItem value="25000">₹25,000</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Button onClick={saveGlobalSalary}>
+              Save Salary
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-            <div className="grid grid-cols-2 gap-3">
+      {/* EDIT CLIENT DIALOG */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Client Expenses</DialogTitle>
+          </DialogHeader>
+
+          {editingClient && (
+            <div className="space-y-3">
               <Input
                 type="number"
                 placeholder="Meta Ads Spend"
-                value={formData.metaAdSpend}
+                value={editingClient.metaAdSpend || ''}
                 onChange={(e) =>
-                  setFormData({ ...formData, metaAdSpend: e.target.value })
+                  setEditingClient({
+                    ...editingClient,
+                    metaAdSpend: e.target.value,
+                  })
                 }
               />
+
               <Input
                 type="number"
                 placeholder="Video Cost"
-                value={formData.outsourcedVideoCost}
+                value={editingClient.outsourcedVideoCost || ''}
                 onChange={(e) =>
-                  setFormData({
-                    ...formData,
+                  setEditingClient({
+                    ...editingClient,
                     outsourcedVideoCost: e.target.value,
                   })
                 }
               />
-            </div>
 
-            <Button onClick={handleAddClient} disabled={loading}>
-              {loading ? 'Adding...' : 'Add Account'}
-            </Button>
-          </div>
+              <Button onClick={saveClientExpenses}>
+                Save Changes
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </DashboardLayout>

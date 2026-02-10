@@ -4,15 +4,14 @@ import {
   getDigitalClientsByMonth,
 } from '@/lib/db-utils';
 
+/* =========================
+   GET DIGITAL CLIENTS
+   (CLIENT-LEVEL ONLY)
+========================= */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
-
-    console.log(
-      '[v1] Digital Clients API: Fetching clients for month:',
-      month
-    );
 
     if (!month) {
       return NextResponse.json(
@@ -23,16 +22,12 @@ export async function GET(request: NextRequest) {
 
     const clients = await getDigitalClientsByMonth(month);
 
-    console.log(
-      '[v1] Digital Clients API: Retrieved',
-      clients.length,
-      'clients for',
-      month
-    );
-
-    return NextResponse.json({ success: true, data: clients });
+    return NextResponse.json({
+      success: true,
+      data: clients,
+    });
   } catch (error: any) {
-    console.error('[v1] Digital Clients API error:', error);
+    console.error('[DIGITAL GET ERROR]', error);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }
@@ -40,14 +35,18 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/* =========================
+   CREATE DIGITAL CLIENT
+   (NO SALARY / NO PROFIT)
+========================= */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
     const {
       clientName,
-      monthlyPlan,
       month,
+      monthlyPlan,            // 15000 or 25000 (BASE AMOUNT)
       metaAdSpend = 0,
       outsourcedVideoCost = 0,
     } = body;
@@ -59,28 +58,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    /* =========================
-       FINANCIAL CALCULATION
-    ========================= */
-    const revenue = Number(monthlyPlan);
-    const gst = revenue * 0.18;
-    const postGst = revenue - gst;
-    const savings = postGst * 0.1;
+    const baseAmount = Number(monthlyPlan);
 
-    const totalExpenses =
-      Number(metaAdSpend) + Number(outsourcedVideoCost);
-
-    const netProfit = postGst - savings - totalExpenses;
+    // GST → DISPLAY / INVOICE ONLY
+    const gst = baseAmount * 0.18;
+    const invoiceTotal = baseAmount + gst;
 
     const clientId = await createDigitalClient({
       clientName,
-      monthlyPlan: revenue,
       month,
-      metaAdSpend: Number(metaAdSpend),
-      outsourcedVideoCost: Number(outsourcedVideoCost),
+
+      monthlyPlan: baseAmount,
       gst,
-      savings,
-      netProfit,
+      invoiceTotal,
+
+      metaAdSpend: Number(metaAdSpend || 0),
+      outsourcedVideoCost: Number(outsourcedVideoCost || 0),
+
+      createdAt: new Date(),
     });
 
     return NextResponse.json({
@@ -88,7 +83,7 @@ export async function POST(request: NextRequest) {
       data: { _id: clientId },
     });
   } catch (error: any) {
-    console.error('[v1] Digital Clients API POST error:', error);
+    console.error('[DIGITAL POST ERROR]', error);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }
