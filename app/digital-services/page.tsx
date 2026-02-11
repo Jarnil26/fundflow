@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Pencil, Receipt, UserCheck, Plus, Trash2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard-layout';
 import { Card } from '@/components/ui/card';
@@ -24,6 +24,39 @@ export default function DigitalServicesPage() {
     `/api/digital-summary?month=${month}`,
     fetcher
   );
+  const { data: salaryRes, mutate: mutateSalary } = useSWR(
+  `/api/digital-salary?month=${month}`,
+  fetcher
+);
+
+useEffect(() => {
+  if (salaryRes?.data?.employees?.length) {
+    setSalaryRows(
+      salaryRes.data.employees.map((e: any) => ({
+        name: e.name,
+        salary: String(e.salary),
+      }))
+    );
+  }
+}, [salaryRes]);
+
+const saveSalary = async () => {
+  await fetch('/api/digital-salary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      month,
+      employees: salaryRows.map((r) => ({
+        name: r.name,
+        salary: Number(r.salary || 0),
+      })),
+      totalSalary,
+    }),
+  });
+
+  mutateSalary();
+  setShowSalaryDialog(false);
+};
 
   const digitalClients = data?.data?.digitalClients || [];
   const invoices = data?.data?.invoices || [];
@@ -41,6 +74,7 @@ export default function DigitalServicesPage() {
     (s, r) => s + Number(r.salary || 0),
     0
   );
+
 
   const addSalaryRow = () =>
     setSalaryRows([...salaryRows, { name: '', salary: '' }]);
@@ -219,6 +253,12 @@ export default function DigitalServicesPage() {
               <span>Total Salary</span>
               <span>₹{money(totalSalary)}</span>
             </div>
+            <div className="flex justify-end pt-2">
+  <Button onClick={saveSalary}>
+    Save Salary
+  </Button>
+</div>
+
           </div>
         </DialogContent>
       </Dialog>
@@ -230,15 +270,14 @@ export default function DigitalServicesPage() {
 function Row({ label, value, muted, warn, danger }: any) {
   return (
     <div
-      className={`flex justify-between ${
-        muted
+      className={`flex justify-between ${muted
           ? 'text-muted-foreground'
           : warn
-          ? 'text-amber-500'
-          : danger
-          ? 'text-red-500'
-          : ''
-      }`}
+            ? 'text-amber-500'
+            : danger
+              ? 'text-red-500'
+              : ''
+        }`}
     >
       <span>{label}</span>
       <span>₹{money(value)}</span>

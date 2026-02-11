@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
-
+    
     console.log('[DIGITAL SUMMARY] month:', month);
 
     if (!month) {

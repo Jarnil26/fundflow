@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
-import {
-  getAllCompanyExpenses,
-  getAllEmployeeWallets,
-} from '@/lib/db-utils';
+import { getAllEmployeeWallets } from '@/lib/db-utils';
 import { ObjectId } from 'mongodb';
 
 /* =========================
@@ -13,28 +10,25 @@ function getCurrentMonthRange() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-  return { start, end };
+  const month = now.toISOString().slice(0, 7); // YYYY-MM
+  return { start, end, month };
 }
 
 export async function GET() {
   try {
-    console.log('[FINANCE][INVOICE] Fetch started');
+    console.log('[FINANCE] Fetch started');
 
-    const { start, end } = getCurrentMonthRange();
+    const { start, end, month } = getCurrentMonthRange();
     const client = await clientPromise;
     const db = client.db('ems_db');
 
-    const invoicesCol = db.collection('invoices');
-    const tasksCol = db.collection('tasks');
-
     /* =====================================================
-       1️⃣ PAID INVOICES (PAYMENT DATE BASED)
-       paymentDate is STRING → converted to Date
+       1️⃣ PAID INVOICES (NON-DIGITAL ONLY)
     ===================================================== */
     const paidInvoices = await db.collection('invoices').find({
       isPaid: true,
 
-      // 💡 BYPASS DIGITAL / SOCIAL MEDIA WORK
+      // ❌ EXCLUDE DIGITAL / SOCIAL MEDIA
       jobDescription: {
         $not: {
           $regex:
@@ -51,63 +45,32 @@ export async function GET() {
       },
     }).toArray();
 
-
-    let totalRevenue = 0;   // without GST
+    let totalRevenue = 0;
     let totalGST = 0;
-    let totalBilled = 0;    // with GST
-    let totalSavings = 0;   // 10% calculated from tasks
+    let totalBilled = 0;
+    let totalSavings = 0;
 
-    /* =====================================================
-       2️⃣ CALCULATIONS FROM PAID INVOICES
-    ===================================================== */
     for (const invoice of paidInvoices) {
       const baseAmount = Number(invoice.amount || 0);
-
-      const invoiceGST = invoice.gstApplied
-        ? Number(invoice.cgstAmount || 0) +
-        Number(invoice.sgstAmount || 0)
+      const gstAmount = invoice.gstApplied
+        ? Number(invoice.cgstAmount || 0) + Number(invoice.sgstAmount || 0)
         : 0;
 
       totalRevenue += baseAmount;
-      totalGST += invoiceGST;
+      totalGST += gstAmount;
       totalBilled += Number(invoice.totalAmount || 0);
 
-      /* =========================
-         SAVINGS (10%)
-         TASK-BASED LOGIC
-      ========================= */
-      for (const item of invoice.items || []) {
-        if (!item.id) continue;
-
-        const task = await tasksCol.findOne({
-          _id: new ObjectId(item.id),
-        });
-
-        if (!task) continue;
-
-        const paymentAmount = Number(task.paymentAmount || 0);
-        const employeeEarning = Number(task.yourProjectEarning || 0);
-
-        // Remove GST from task payment if GST applied
-        const amountWithoutGST = task.gstApplied
-          ? paymentAmount - paymentAmount * 0.18
-          : paymentAmount;
-
-        // Remaining after employee payout
-        const remaining =
-          amountWithoutGST - employeeEarning;
-
-        if (remaining > 0) {
-          totalSavings += remaining * 0.1;
-        }
+      // 10% savings (simple logic)
+      const remaining = baseAmount - gstAmount;
+      if (remaining > 0) {
+        totalSavings += remaining * 0.1;
       }
     }
 
     /* =====================================================
-       3️⃣ UNPAID INVOICES (PENDING)
-       → Billing date based
+       2️⃣ PENDING INVOICES (THIS MONTH)
     ===================================================== */
-    const unpaidInvoices = await invoicesCol.find({
+    const unpaidInvoices = await db.collection('invoices').find({
       $or: [
         { isPaid: { $ne: true } },
         { isPaid: { $exists: false } },
@@ -121,21 +84,27 @@ export async function GET() {
       clientName: inv.clientName,
       billingDate: inv.billingDate,
       amount: Number(inv.amount || 0),
-      gstApplied: !!inv.gstApplied,
       totalAmount: Number(inv.totalAmount || 0),
     }));
 
     /* =====================================================
-       4️⃣ COMPANY EXPENSES
+       3️⃣ COMPANY EXPENSES (EXCLUDE DIGITAL)
     ===================================================== */
-    const companyExpenses = await getAllCompanyExpenses();
+    const companyExpenses = await db.collection('company_expenses').find({
+      month,
+      category: { $ne: 'DIGITAL' }, // ✅ IMPORTANT FIX
+    }).toArray();
+
     const companyExpenseTotal = companyExpenses.reduce(
-      (sum: number, e: any) => sum + Number(e.amount || 0),
+      (sum, e) => sum + Number(e.amount || 0),
       0
     );
 
+    console.log('[FINANCE] companyExpenses docs:', companyExpenses);
+    console.log('[FINANCE] companyExpenseTotal:', companyExpenseTotal);
+
     /* =====================================================
-       5️⃣ EMPLOYEE WALLET PENDING
+       4️⃣ EMPLOYEE WALLET PENDING
     ===================================================== */
     const wallets = await getAllEmployeeWallets();
     const walletsPending = wallets.reduce(
@@ -144,15 +113,12 @@ export async function GET() {
     );
 
     /* =====================================================
-       6️⃣ FINAL NET PROFIT (CASH BASIS)
-       Revenue - Expenses - Savings
+       5️⃣ FINAL NET PROFIT
     ===================================================== */
     const finalNetProfit =
-      totalRevenue -
-      companyExpenseTotal -
-      totalSavings;
+      totalRevenue - companyExpenseTotal - totalSavings;
 
-    console.log('[FINANCE][INVOICE] Success');
+    console.log('[FINANCE] Success');
 
     return NextResponse.json({
       success: true,
