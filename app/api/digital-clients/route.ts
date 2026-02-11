@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  createDigitalClient,
-  getDigitalClientsByMonth,
-} from '@/lib/db-utils';
+import clientPromise from '@/lib/mongodb';
 
 /* =========================
    GET DIGITAL CLIENTS
-   (CLIENT-LEVEL ONLY)
 ========================= */
 export async function GET(request: NextRequest) {
   try {
@@ -20,7 +16,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const clients = await getDigitalClientsByMonth(month);
+    const client = await clientPromise;
+    const db = client.db('ems_db');
+
+    const clients = await db
+      .collection('digital_clients')
+      .find({
+        month: { $regex: `^${month}` }, // ✅ FIXED month issue
+      })
+      .sort({ createdAt: -1 })
+      .toArray();
 
     return NextResponse.json({
       success: true,
@@ -37,16 +42,14 @@ export async function GET(request: NextRequest) {
 
 /* =========================
    CREATE DIGITAL CLIENT
-   (NO SALARY / NO PROFIT)
 ========================= */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-
     const {
       clientName,
       month,
-      monthlyPlan,            // 15000 or 25000 (BASE AMOUNT)
+      monthlyPlan,
       metaAdSpend = 0,
       outsourcedVideoCost = 0,
     } = body;
@@ -59,28 +62,26 @@ export async function POST(request: NextRequest) {
     }
 
     const baseAmount = Number(monthlyPlan);
-
-    // GST → DISPLAY / INVOICE ONLY
     const gst = baseAmount * 0.18;
     const invoiceTotal = baseAmount + gst;
 
-    const clientId = await createDigitalClient({
-      clientName,
-      month,
+    const client = await clientPromise;
+    const db = client.db('ems_db');
 
+    const result = await db.collection('digital_clients').insertOne({
+      clientName,
+      month: month.trim(),        // ✅ normalize
       monthlyPlan: baseAmount,
       gst,
       invoiceTotal,
-
-      metaAdSpend: Number(metaAdSpend || 0),
-      outsourcedVideoCost: Number(outsourcedVideoCost || 0),
-
+      metaAdSpend: Number(metaAdSpend),
+      outsourcedVideoCost: Number(outsourcedVideoCost),
       createdAt: new Date(),
     });
 
     return NextResponse.json({
       success: true,
-      data: { _id: clientId },
+      data: { _id: result.insertedId },
     });
   } catch (error: any) {
     console.error('[DIGITAL POST ERROR]', error);

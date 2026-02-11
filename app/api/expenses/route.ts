@@ -10,8 +10,6 @@ import {
 ===================================================== */
 export async function GET() {
   try {
-    console.log('[v0] Expenses API: Fetching company expenses');
-
     const expenses = await getAllCompanyExpenses();
 
     return NextResponse.json({
@@ -19,7 +17,7 @@ export async function GET() {
       data: expenses,
     });
   } catch (error: any) {
-    console.error('[v0] Expenses API error:', error);
+    console.error('[EXPENSES GET ERROR]', error);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }
@@ -40,7 +38,7 @@ export async function POST(request: NextRequest) {
       projectName,
       amount,
       description,
-      category,
+      category,    // DIGITAL | GRAPHIC | COMMON
       month,
     } = body;
 
@@ -51,13 +49,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    /* =============================
+    /* =========================
+       VALIDATE CATEGORY
+    ========================= */
+    const allowedCategories = ['DIGITAL', 'GRAPHIC', 'COMMON'];
+
+    if (!allowedCategories.includes(category)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Invalid category. Use DIGITAL, GRAPHIC or COMMON',
+        },
+        { status: 400 }
+      );
+    }
+
+    /* =========================
        PROJECT EXPENSE
-    ============================== */
+    ========================= */
     if (type === 'project') {
       if (!taskId) {
         return NextResponse.json(
-          { success: false, error: 'taskId required for project expense' },
+          {
+            success: false,
+            error: 'taskId required for project expense',
+          },
           { status: 400 }
         );
       }
@@ -67,7 +84,7 @@ export async function POST(request: NextRequest) {
         projectName,
         amount: Number(amount),
         description,
-        category,
+        category, // stored as-is
       });
 
       return NextResponse.json({
@@ -76,13 +93,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    /* =============================
+    /* =========================
        COMPANY EXPENSE
-    ============================== */
+    ========================= */
     if (type === 'company') {
       if (!month) {
         return NextResponse.json(
-          { success: false, error: 'month required for company expense' },
+          {
+            success: false,
+            error: 'month required for company expense',
+          },
           { status: 400 }
         );
       }
@@ -91,7 +111,7 @@ export async function POST(request: NextRequest) {
         month,
         amount: Number(amount),
         description,
-        category,
+        category, // DIGITAL | GRAPHIC | COMMON
       });
 
       return NextResponse.json({
@@ -105,7 +125,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   } catch (error: any) {
-    console.error('[v0] Expenses API POST error:', error);
+    console.error('[EXPENSES POST ERROR]', error);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }
